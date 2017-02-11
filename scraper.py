@@ -1,3 +1,4 @@
+# Note: this code does not work any more since avis changed their website
 from lxml import html
 from openpyxl import Workbook
 import json
