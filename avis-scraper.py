@@ -2,7 +2,7 @@ from selenium import webdriver
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.common.by import By
-import os, sys, json, time, copy
+import os, sys, json, time, copy, traceback
 from openpyxl import Workbook
 
 def validate_param(param):
@@ -24,6 +24,7 @@ def validate_params(arg1, arg2):
 
 def set_pick_drop(css_selector, browser):
     elem = browser.find_element_by_css_selector(css_selector + '_value')
+    elem.clear()
     elem.send_keys(item)
     wait = WebDriverWait(browser, 10)
     el_addr = wait.until(EC.visibility_of_element_located((By.CSS_SELECTOR, css_selector + '_dropdown > div.angucomplete-results > div:nth-child(1) > div.angucomplete-row > div')))
@@ -31,8 +32,10 @@ def set_pick_drop(css_selector, browser):
 
 def set_pick_drop_date(start, end, browser):
     elem = browser.find_element_by_css_selector('#from')
+    elem.clear()
     elem.send_keys(start)
     elem = browser.find_element_by_css_selector('#to')
+    elem.clear()
     elem.send_keys(end)
 
 def go_to_car_page(browser):
@@ -52,27 +55,62 @@ def get_car_info(car_types, browser):
         break
     if not picked_type:
         return None
-    # find the 'Pay Now' button
-    xpath_selector_tpl = '//div//div//div//h3[contains(@ng-bind,"car.carGroup") and contains(text(), "{0}")]//..//..//..//..//div[contains(@class, "paynow")]//a[@id="res-vehicles-pay-now"]'
-    xpath_selector = xpath_selector_tpl.format(t)
-    btn  = browser.find_element_by_xpath(xpath_selector)
+    btn = None
+    try:
+        # find the 'Pay Now' button
+        xpath_selector_tpl = '//div//div//div//h3[contains(@ng-bind,"car.carGroup") and contains(text(), "{0}")]//..//..//..//..//div[contains(@class, "paynow")]//a[@id="res-vehicles-pay-now"]'
+        xpath_selector = xpath_selector_tpl.format(t)
+        btn  = browser.find_element_by_xpath(xpath_selector)
+    except:
+        # find the Select button
+        xpath_selector_tpl = '//div//div//div//h3[contains(@ng-bind,"car.carGroup") and contains(text(), "{0}")]//..//..//..//..//div[contains(@class, "paynow")]//a[@id="res-vehicles-select"]'
+        xpath_selector = xpath_selector_tpl.format(t)
+        btn  = browser.find_element_by_xpath(xpath_selector)
     browser.execute_script("arguments[0].click();", btn)
     wait = WebDriverWait(browser, 10)
-    wait.until(EC.visibility_of_element_located((By.ID, 'amt-prepaid')))
+    wait.until(EC.visibility_of_element_located((By.ID, 'res-extras-continue-bottom')))
     return picked_type
+
+def get_car_info_item(results, item, browser):
+    return get_car_info_item_search(results, item, browser, item)
+
+def get_car_info_item_search(results, item, browser, search_str):
+    xpath_tpl = '//div//span[contains(text(), "Fees & Taxes")]/following-sibling::div[1]//div//div//span[{0}]/following-sibling::span[1]'
+    contain_words = 'contains(text(), "{0}")'
+    words = search_str.split()
+    pattern = ""
+    for itx, w in enumerate(words):
+        if itx != 0:
+            pattern += (" and " + contain_words.format(w))
+        else:
+            pattern = contain_words.format(w)
+    xpath_selector = xpath_tpl.format(pattern)
+    try:
+        elem = browser.find_element_by_xpath(xpath_selector)
+        results[item] = float(browser.execute_script('return arguments[0].textContent', elem))
+    except:
+        results[item] = 0
+    return results[item]
+
 
 def collector_fee_info(browser):
     results = {}
     elem = browser.find_element_by_xpath('//div//span[contains(text(), "Fees & Taxes")]/following-sibling::span[1]//span[2]')
     results['Total Fees & Taxes'] = elem.text
-    elem = browser.find_element_by_xpath('//div//span[contains(text(), "Fees & Taxes")]/following-sibling::div[1]//div//div//span[contains(text(), "Concession Recovery Fee")]/following-sibling::span[1]')
-    results['Concession Recovery Fee'] = browser.execute_script('return arguments[0].textContent', elem)
-    elem = browser.find_element_by_xpath('//div//span[contains(text(), "Fees & Taxes")]/following-sibling::div[1]//div//div//span[contains(text(), "Customer Facility Charge")]/following-sibling::span[1]')
-    results['Customer Facility Charge'] = browser.execute_script('return arguments[0].textContent', elem)
-    elem = browser.find_element_by_xpath('//div//span[contains(text(), "Fees & Taxes")]/following-sibling::div[1]//div//div//span[contains(text(), "Energy Recovery Fee")]/following-sibling::span[1]')
-    results['Energy Recovery Fee'] = browser.execute_script('return arguments[0].textContent', elem)
-    elem = browser.find_element_by_xpath('//div//span[contains(text(), "Fees & Taxes")]/following-sibling::div[1]//div//div//span[contains(text(), "Vehicle License Fee")]/following-sibling::span[1]')
-    results['Vehicle License Fee'] = browser.execute_script('return arguments[0].textContent', elem)
+    get_car_info_item(results, 'Concession Recovery Fee', browser)
+    get_car_info_item(results, 'Concession Recovery Fee Surcharge', browser)
+    get_car_info_item(results, 'Customer Facility Charge', browser)
+    get_car_info_item(results, 'Energy Recovery Fee', browser)
+    get_car_info_item(results, 'Vehicle Lic Fee', browser)
+    get_car_info_item(results, 'Vehicle License Recoupment Fee', browser)
+    get_car_info_item(results, 'Transportation Fee', browser)
+    get_car_info_item(results, 'Tourism Assessment Fee', browser)
+    get_car_info_item(results, 'City Tax', browser)
+    get_car_info_item(results, 'Government Service Fee', browser)
+    get_car_info_item(results, 'Gross Receipts Taxes', browser)
+    get_car_info_item(results, 'U Drive It Tax', browser)
+    get_car_info_item(results, 'Highway Surcharge', browser)
+    get_car_info_item(results, 'Other Fee', browser)
     elem = browser.find_element_by_xpath('//div//span[contains(text(), "Fees & Taxes")]/following-sibling::div[1]//div//div//span[contains(text(), "Total Tax")]/following-sibling::span[1]')
     results['Total Tax'] = browser.execute_script('return arguments[0].textContent', elem)
     elem = browser.find_element_by_xpath('//span[contains(@class, "est-total")]//span[2]')
@@ -81,7 +119,13 @@ def collector_fee_info(browser):
 
 def save(results):
     if len(results) == 0 : return
-    excel_hdr = ['Airport', 'Car Type', 'Estimated Total', 'Total Fees & Taxes', 'Total Tax', 'Concession Recovery Fee', 'Customer Facility Charge', 'Energy Recovery Fee', 'Vehicle License Fee']
+    excel_hdr = ['Airport', 'Car Type', 
+    'Estimated Total', 'Total Fees & Taxes', 
+    'Total Tax', 'Concession Recovery Fee', 'Concession Recovery Fee Surcharge',
+    'Customer Facility Charge', 'Energy Recovery Fee', 
+    'Vehicle Lic Fee', 'Vehicle License Recoupment Fee', 'Transportation Fee',
+    'Tourism Assessment Fee', 'City Tax', 'Government Service Fee',
+    'Gross Receipts Taxes', 'U Drive It Tax', 'Highway Surcharge', 'Other Fee']
     wb = Workbook()
     ws = wb.worksheets[0]
     ws.append(excel_hdr)
@@ -125,22 +169,32 @@ if __name__ == '__main__':
 
     car_types = ['Economy', 'Compact', 'Intermediate', 'Standard']
     results = []
+    failed = []
     for idx, item in enumerate(airports):
         browser.get('https://www.avis.com/en/home')
         print('Processing No.' + str(idx + 1) + ' ' + item + ' ...   ', end='')	
-        set_pick_drop('#PicLoc', browser)
-        set_pick_drop('#DropLoc', browser)
-        set_pick_drop_date(sys.argv[1], sys.argv[2], browser)
-        go_to_car_page(browser)
-        cartype = get_car_info(car_types, browser)
-        if not cartype:
-            print('Failed: Could not find specified types')
+        try:
+            set_pick_drop('#PicLoc', browser)
+            set_pick_drop('#DropLoc', browser)
+            set_pick_drop_date(sys.argv[1], sys.argv[2], browser)
+            go_to_car_page(browser)
+            cartype = get_car_info(car_types, browser)
+            if not cartype:
+                raise Exception('Could not find specified types')
+            car_info = collector_fee_info(browser)
+            car_info['Car Type'] = cartype
+            car_info['Airport'] = item
+            results.append(car_info)
+        except Exception as e:
+            print('fail!')
+            failed.append(item)
+            #exc_type, exc_value, exc_traceback = sys.exc_info()
+            #traceback.print_exception(exc_type, exc_value, exc_traceback)            
             continue
-        car_info = collector_fee_info(browser)
-        car_info['Car Type'] = cartype
-        car_info['Airport'] = item
-        results.append(car_info)
         print('done!')
+    if len(failed) > 0:
+        print('Failed to retrieve info from the following airports:')
+        print(failed)
     browser.quit()
     save(results)
 
